@@ -62,17 +62,19 @@ Inventory-System/
     初始化：npm install
     启动：npm run dev
     运行网址： http://localhost:3000
-    配置：  inventory-frontend@0.0.0 G:\AAA IMSystem\1.2\frontend
+    配置： inventory-frontend@0.0.0 G:\AAA IMSystem\1.2\frontend
             +-- @vitejs/plugin-vue@6.0.5
             +-- axios@1.14.0
             +-- echarts@5.6.0
             +-- element-plus@2.13.6
             +-- vite@8.0.3
             +-- vue-router@4.6.4
-            `-- vue@3.5.31
-
+            +-- vue@3.5.31
+            `-- xlsx@0.18.5
 启动步骤：
     1、navicat连接数据库
-    2、新终端，cd backend，启动后端服务：uvicorn main:app --reload
+    2、新终端，cd backend，启动虚拟环境：.venv\Scripts\activate，启动后端服务：uvicorn main:app --reload
     3、新终端，cd frontend，启动前端服务：npm run dev
     4、浏览器打开：http://localhost:3000
+
+

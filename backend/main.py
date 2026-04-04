@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 import models, schemas
 from database import engine, get_db
 
@@ -8,67 +9,91 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
-# ================= 商品管理 =================
+# ================= 权限与日志核心 =================
+def get_current_user(x_username: str = Header(default=None), db: Session = Depends(get_db)):
+    if not x_username:
+        raise HTTPException(status_code=401, detail="未提供身份凭证，请重新登录")
+    user = db.query(models.User).filter(models.User.username == x_username).first()
+    if not user or not user.status:
+        raise HTTPException(status_code=403, detail="账号无效或已被禁用")
+    return user
+
+def record_log(db: Session, user: str, action: str, log_type: str = "操作"):
+    db_log = models.Log(user=user, action=action, type=log_type)
+    db.add(db_log)
+    db.commit()
+
+# ================= 业务接口 =================
+
+@app.post("/api/login")
+def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
+    db_user = db.query(models.User).filter(models.User.username == user.username).first()
+    if not db_user or db_user.password != user.password:
+        raise HTTPException(status_code=400, detail="用户名或密码错误")
+    if not db_user.status:
+        raise HTTPException(status_code=403, detail="该账号已被禁用")
+    
+    record_log(db, user.username, "用户登录系统", "登录")
+    return {"msg": "登录成功", "token": f"mock_token_{db_user.id}", "username": db_user.username, "role": db_user.role}
+
+# --- 商品接口 ---
 @app.get("/api/products", response_model=list[schemas.ProductResponse])
 def get_products(db: Session = Depends(get_db)):
     return db.query(models.Product).all()
 
 @app.post("/api/products", response_model=schemas.ProductResponse)
-def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db)):
+def create_product(product: schemas.ProductCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     db_product = models.Product(**product.model_dump())
     db.add(db_product)
     db.commit()
     db.refresh(db_product)
-    
-    # 同步创建库存条目
-    db_inv = models.Inventory(product_id=db_product.id, quantity=0)
-    db.add(db_inv)
+    db.add(models.Inventory(product_id=db_product.id, quantity=0))
+    # 使用真实登录的用户名记录日志
+    record_log(db, current_user.username, f"新增商品: {product.name}")
     db.commit()
     return db_product
 
 @app.put("/api/products/{product_id}", response_model=schemas.ProductResponse)
-def update_product(product_id: int, product: schemas.ProductUpdate, db: Session = Depends(get_db)):
+def update_product(product_id: int, product: schemas.ProductUpdate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
-    if not db_product: raise HTTPException(status_code=404, detail="商品不存在")
     for key, value in product.model_dump().items():
         setattr(db_product, key, value)
+    record_log(db, current_user.username, f"修改商品信息: {product.name}")
     db.commit()
     db.refresh(db_product)
     return db_product
 
 @app.delete("/api/products/{product_id}")
-def delete_product(product_id: int, db: Session = Depends(get_db)):
-    # 先删除关联库存
+def delete_product(product_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     db.query(models.Inventory).filter(models.Inventory.product_id == product_id).delete()
     db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
     if db_product:
+        record_log(db, current_user.username, f"删除商品: {db_product.name}")
         db.delete(db_product)
         db.commit()
     return {"msg": "删除成功"}
 
-# ================= 库存管理 =================
+# --- 库存接口 ---
 @app.get("/api/inventory")
 def get_inventory(db: Session = Depends(get_db)):
     res = db.query(models.Inventory, models.Product.name).join(models.Product).all()
     return [{"id": inv.id, "product_id": inv.product_id, "product_name": name, "quantity": inv.quantity, "min_alert": inv.min_alert} for inv, name in res]
 
 @app.put("/api/inventory/{inv_id}")
-def update_inventory(inv_id: int, inv_update: schemas.InventoryUpdate, db: Session = Depends(get_db)):
+def update_inventory(inv_id: int, inv_update: schemas.InventoryUpdate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     db_inv = db.query(models.Inventory).filter(models.Inventory.id == inv_id).first()
-    if not db_inv: raise HTTPException(status_code=404, detail="库存记录不存在")
+    db_product = db.query(models.Product).filter(models.Product.id == db_inv.product_id).first()
     db_inv.quantity += inv_update.quantity_change
-    if db_inv.quantity < 0: raise HTTPException(status_code=400, detail="库存不足")
+    action_name = "入库" if inv_update.quantity_change > 0 else "出库"
+    # 使用真实登录的用户名记录日志
+    record_log(db, current_user.username, f"商品[{db_product.name}] {action_name} {abs(inv_update.quantity_change)} 件")
     db.commit()
-    return {"msg": "库存更新成功", "current_quantity": db_inv.quantity}
+    return {"msg": "更新成功"}
 
-# ================= 用户管理 =================
+# --- 用户与日志接口 ---
 @app.get("/api/users", response_model=list[schemas.UserResponse])
 def get_users(db: Session = Depends(get_db)):
     return db.query(models.User).all()
@@ -84,34 +109,37 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 @app.put("/api/users/{user_id}", response_model=schemas.UserResponse)
 def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not db_user: raise HTTPException(status_code=404, detail="用户不存在")
-    
     db_user.username = user.username
     db_user.role = user.role
     db_user.status = user.status
-    if user.password: # 如果传了新密码则更新
-        db_user.password = user.password
+    if user.password: db_user.password = user.password
     db.commit()
     db.refresh(db_user)
     return db_user
-    
-@app.post("/api/login")
-def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
-    # 查询数据库中的用户
-    db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    
-    # 校验账号与密码
-    if not db_user or db_user.password != user.password:
-        raise HTTPException(status_code=400, detail="用户名或密码错误")
-    
-    # 校验账号状态
-    if not db_user.status:
-        raise HTTPException(status_code=403, detail="该账号已被禁用，请联系管理员")
+
+@app.get("/api/logs")
+def get_logs(user: str = None, type: str = None, db: Session = Depends(get_db)):
+    query = db.query(models.Log)
+    if user: query = query.filter(models.Log.user.contains(user))
+    if type: query = query.filter(models.Log.type == type)
+    return query.order_by(models.Log.id.desc()).all()
+
+# --- 报表接口 (加入权限校验) ---
+@app.get("/api/dashboard")
+def get_dashboard(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # 核心：校验必须是 admin 角色
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="权限不足，仅管理员可查看报表数据")
         
-    # 返回登录成功信息与模拟Token
+    product_count = db.query(models.Product).count()
+    low_stock_count = db.query(models.Inventory).filter(models.Inventory.quantity < models.Inventory.min_alert).count()
+    cat_stats = db.query(models.Product.category, func.count(models.Product.id).label('count'), func.avg(models.Product.price).label('avg_price')).group_by(models.Product.category).all()
+    product_stats = [{"category": c[0], "count": c[1], "avgPrice": round(float(c[2]), 2) if c[2] else 0} for c in cat_stats]
+    inv_res = db.query(models.Inventory, models.Product.name).join(models.Product).all()
+    inventory_stats = [{"name": name, "stock": inv.quantity, "min_alert": inv.min_alert} for inv, name in inv_res]
+    
     return {
-        "msg": "登录成功",
-        "token": f"mock_token_user_{db_user.id}",
-        "username": db_user.username,
-        "role": db_user.role
+        "summary": { "product_count": product_count, "low_stock_count": low_stock_count },
+        "product_stats": product_stats,
+        "inventory_stats": inventory_stats
     }

@@ -3,11 +3,11 @@
     <template #header>
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <span>用户与权限管理</span>
-        <el-button type="primary" @click="dialogVisible = true">新增用户</el-button>
+        <el-button type="primary" @click="openDialog('add')">新增用户</el-button>
       </div>
     </template>
 
-    <el-table :data="users" border style="width: 100%">
+    <el-table :data="users" border style="width: 100%" v-loading="loading">
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="username" label="用户名" />
       <el-table-column prop="role" label="角色权限">
@@ -24,19 +24,18 @@
       </el-table-column>
       <el-table-column label="操作" width="150">
         <template #default="scope">
-          <el-button size="small" @click="editUser(scope.row)">编辑</el-button>
+          <el-button size="small" @click="openDialog('edit', scope.row)">编辑</el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <!-- 用户弹窗 -->
-    <el-dialog title="用户信息" v-model="dialogVisible" width="400px">
+    <el-dialog :title="dialogType === 'add' ? '新增用户' : '编辑用户'" v-model="dialogVisible" width="400px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="用户名">
-          <el-input v-model="form.username"></el-input>
+          <el-input v-model="form.username" :disabled="dialogType === 'edit'"></el-input>
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" placeholder="不修改请留空"></el-input>
+          <el-input v-model="form.password" type="password" :placeholder="dialogType === 'edit' ? '不修改请留空' : '请输入密码'"></el-input>
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="form.role" style="width: 100%;">
@@ -47,32 +46,72 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="dialogVisible = false; $message.success('保存成功')">确定</el-button>
+        <el-button type="primary" @click="saveUser">确定</el-button>
       </template>
     </el-dialog>
   </el-card>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import axios from 'axios'
 
-const users = ref([
-  { id: 1, username: 'admin', role: 'admin', status: true },
-  { id: 2, username: 'zhangsan', role: 'user', status: true },
-  { id: 3, username: 'lisi', role: 'user', status: false }
-])
-
+const apiBase = 'http://localhost:8000/api'
+const users = ref([])
+const loading = ref(false)
 const dialogVisible = ref(false)
-const form = reactive({ id: null, username: '', password: '', role: 'user' })
+const dialogType = ref('add')
+const form = reactive({ id: null, username: '', password: '', role: 'user', status: true })
 
-const editUser = (row) => {
-  Object.assign(form, row)
-  form.password = ''
+const fetchUsers = async () => {
+  loading.value = true
+  const res = await axios.get(`${apiBase}/users`)
+  users.value = res.data
+  loading.value = false
+}
+
+const openDialog = (type, row = null) => {
+  dialogType.value = type
+  if (type === 'edit') {
+    Object.assign(form, row)
+    form.password = '' // 密码置空
+  } else {
+    Object.assign(form, { id: null, username: '', password: '', role: 'user', status: true })
+  }
   dialogVisible.value = true
 }
 
-const handleStatusChange = (row) => {
-  ElMessage.success(`用户 ${row.username} 状态已更新为: ${row.status ? '正常' : '禁用'}`)
+const saveUser = async () => {
+  try {
+    if (dialogType.value === 'add') {
+      if (!form.password) return ElMessage.warning('密码不能为空')
+      await axios.post(`${apiBase}/users`, form)
+      ElMessage.success('新增成功')
+    } else {
+      await axios.put(`${apiBase}/users/${form.id}`, form)
+      ElMessage.success('修改成功')
+    }
+    dialogVisible.value = false
+    fetchUsers()
+  } catch (e) {
+    ElMessage.error('操作失败')
+  }
 }
+
+const handleStatusChange = async (row) => {
+  try {
+    await axios.put(`${apiBase}/users/${row.id}`, {
+      username: row.username,
+      role: row.role,
+      status: row.status
+    })
+    ElMessage.success(`状态已更新为: ${row.status ? '正常' : '禁用'}`)
+  } catch (e) {
+    row.status = !row.status // 失败回滚开关状态
+    ElMessage.error('状态更新失败')
+  }
+}
+
+onMounted(() => fetchUsers())
 </script>

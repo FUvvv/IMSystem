@@ -7,8 +7,7 @@
       </div>
     </template>
 
-    <!-- 商品列表 -->
-    <el-table :data="products" border style="width: 100%">
+    <el-table :data="products" border style="width: 100%" v-loading="loading">
       <el-table-column prop="id" label="商品ID" width="100" />
       <el-table-column prop="name" label="商品名称" />
       <el-table-column prop="category" label="商品分类" />
@@ -21,21 +20,20 @@
       </el-table-column>
     </el-table>
 
-    <!-- 新增/编辑弹窗 -->
     <el-dialog :title="dialogType === 'add' ? '新增商品' : '编辑商品'" v-model="dialogVisible" width="500px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="商品名称">
-          <el-input v-model="form.name" placeholder="请输入商品名称"></el-input>
+          <el-input v-model="form.name"></el-input>
         </el-form-item>
         <el-form-item label="商品分类">
-          <el-select v-model="form.category" placeholder="请选择分类" style="width: 100%;">
+          <el-select v-model="form.category" style="width: 100%;">
             <el-option label="电子产品" value="电子产品" />
             <el-option label="办公用品" value="办公用品" />
             <el-option label="日用百货" value="日用百货" />
           </el-select>
         </el-form-item>
         <el-form-item label="商品单价">
-          <el-input-number v-model="form.price" :min="0" :precision="2" :step="1" style="width: 100%;"></el-input-number>
+          <el-input-number v-model="form.price" :min="0" :precision="2" style="width: 100%;"></el-input-number>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -47,22 +45,27 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import axios from 'axios'
 
-// 模拟数据
-const products = ref([
-  { id: 1, name: '联想ThinkPad笔记本', category: '电子产品', price: 5999.00 },
-  { id: 2, name: '得力A4打印纸', category: '办公用品', price: 25.50 }
-])
-
+const apiBase = 'http://localhost:8000/api'
+const products = ref([])
+const loading = ref(false)
 const dialogVisible = ref(false)
-const dialogType = ref('add') // add 或 edit
+const dialogType = ref('add')
 const form = reactive({ id: null, name: '', category: '', price: 0 })
+
+const fetchProducts = async () => {
+  loading.value = true
+  const res = await axios.get(`${apiBase}/products`)
+  products.value = res.data
+  loading.value = false
+}
 
 const openDialog = (type, row = null) => {
   dialogType.value = type
-  if (type === 'edit' && row) {
+  if (type === 'edit') {
     Object.assign(form, row)
   } else {
     Object.assign(form, { id: null, name: '', category: '', price: 0 })
@@ -70,22 +73,29 @@ const openDialog = (type, row = null) => {
   dialogVisible.value = true
 }
 
-const saveProduct = () => {
-  if (dialogType.value === 'add') {
-    products.value.push({ ...form, id: Date.now() })
-    ElMessage.success('新增成功')
-  } else {
-    const index = products.value.findIndex(p => p.id === form.id)
-    if (index !== -1) products.value[index] = { ...form }
-    ElMessage.success('修改成功')
+const saveProduct = async () => {
+  try {
+    if (dialogType.value === 'add') {
+      await axios.post(`${apiBase}/products`, form)
+      ElMessage.success('新增成功')
+    } else {
+      await axios.put(`${apiBase}/products/${form.id}`, form)
+      ElMessage.success('修改成功')
+    }
+    dialogVisible.value = false
+    fetchProducts()
+  } catch (e) {
+    ElMessage.error('操作失败')
   }
-  dialogVisible.value = false
 }
 
 const handleDelete = (id) => {
-  ElMessageBox.confirm('确认删除该商品吗?', '提示', { type: 'warning' }).then(() => {
-    products.value = products.value.filter(p => p.id !== id)
+  ElMessageBox.confirm('确认删除该商品吗? (关联库存也会被删除)', '警告', { type: 'warning' }).then(async () => {
+    await axios.delete(`${apiBase}/products/${id}`)
     ElMessage.success('删除成功')
+    fetchProducts()
   }).catch(() => {})
 }
+
+onMounted(() => fetchProducts())
 </script>

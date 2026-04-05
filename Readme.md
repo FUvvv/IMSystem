@@ -1,5 +1,7 @@
+# 📂 工程结构与环境配置整理
 
-工程结构
+## 工程结构
+```
 Inventory-System/
 ├── backend/                  # Python 后端目录
 │   ├── main.py               # 后端主程序入口 (路由与接口)
@@ -29,52 +31,88 @@ Inventory-System/
 │           └── SalesManage.vue     # 销售管理 (仅UI)
 ├── Readme.md
 └── db.sql                    # 数据库初始化脚本
+```
 
-工程栈
-    Node.js (v18+)：作为前端Vue3的运行和构建环境。
-    Python (v3.9+)：作为后端运行环境。
-    MySQL (v8.0+)：本地数据库服务器。
-    Navicat：数据库可视化管理工具。
+---
 
-本地数据库：inventory_db
-    账号：root
-    密码：123456
-    端口：3306
-    代码接口：database.py
+## 工程栈
+- **Node.js (v18+)**：前端 Vue3 运行与构建环境  
+- **Python (v3.9+)**：后端运行环境  
+- **MySQL (v8.0+)**：本地数据库服务器  
+- **Navicat**：数据库可视化管理工具  
 
-环境配置：
-后端：python虚拟环境
-    路径：xx\backend\venv\Scripts\activate
-    创建：python -m venv venv
-    启动：.venv\Scripts\activate
-    退出：deactivate
-    配置：pip install -r requirements.txt
-        fastapi==0.104.1
-        uvicorn==0.24.0
-        sqlalchemy==2.0.23
-        pymysql==1.1.0
-        pydantic==2.5.2
-    后端启动代码：uvicorn main:app --reload
-    后端运行网址： http://localhost:8000
-    api接口文档反馈： http://localhost:8000/docs
-前端：Vue 3
-    路径：xx\frontend
-    初始化：npm install
-    启动：npm run dev
-    运行网址： http://localhost:3000
-    配置： inventory-frontend@0.0.0 G:\AAA IMSystem\1.2\frontend
-            +-- @vitejs/plugin-vue@6.0.5
-            +-- axios@1.14.0
-            +-- echarts@5.6.0
-            +-- element-plus@2.13.6
-            +-- vite@8.0.3
-            +-- vue-router@4.6.4
-            +-- vue@3.5.31
-            `-- xlsx@0.18.5
-启动步骤：
-    1、navicat连接数据库
-    2、新终端，cd backend，启动虚拟环境：.venv\Scripts\activate，启动后端服务：uvicorn main:app --reload
-    3、新终端，cd frontend，启动前端服务：npm run dev
-    4、浏览器打开：http://localhost:3000
+---
 
+## 数据库配置
+- 数据库：`inventory_db`  
+- 账号：`root`  
+- 密码：`123456`  
+- 端口：`3306`  
+- 接口文件：`backend/database.py`  
+
+---
+
+## 后端环境配置
+- **虚拟环境路径**：`xx\backend\venv\Scripts\activate`  
+- **创建虚拟环境**：`python -m venv venv`  
+- **启动虚拟环境**：`.venv\Scripts\activate`  
+- **退出虚拟环境**：`deactivate`  
+- **安装依赖**：`pip install -r requirements.txt`  
+
+### requirements.txt
+```
+fastapi==0.104.1
+uvicorn==0.24.0
+sqlalchemy==2.0.23
+pymysql==1.1.0
+pydantic==2.5.2
+cryptography==46.0.6
+passlib[bcrypt]==1.7.4
+```
+
+### 后端启动
+```bash
+uvicorn main:app --reload
+```
+- 运行网址：`http://localhost:8000`  
+- API 文档：`http://localhost:8000/docs`  
+
+---
+
+## 前端环境配置
+- **路径**：`xx\frontend`  
+- **初始化**：`npm install`  
+- **启动**：`npm run dev`  
+- **运行网址**：`http://localhost:3000`  
+
+### package.json 依赖
+```
+@vitejs/plugin-vue@6.0.5
+axios@1.14.0
+echarts@5.6.0
+element-plus@2.13.6
+jspdf-autotable@5.0.7
+jspdf@4.2.1
+vite@8.0.3
+vue-router@4.6.4
+vue@3.5.31
+xlsx@0.18.5
+```
+
+---
+
+## 启动步骤
+1. 使用 **Navicat** 连接数据库  
+2. 新终端进入 `backend`，启动虚拟环境：  
+   ```bash
+   .venv\Scripts\activate
+   uvicorn main:app --reload
+   ```
+3. 新终端进入 `frontend`，启动前端服务：  
+   ```bash
+   npm run dev
+   ```
+4. 浏览器访问：`http://localhost:3000`  
+
+---
 

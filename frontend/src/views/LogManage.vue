@@ -7,7 +7,7 @@
         <el-input v-model="searchForm.user" placeholder="输入用户名" clearable />
       </el-form-item>
       <el-form-item label="日志类型">
-        <el-select v-model="searchForm.type" placeholder="全部" clearable>
+        <el-select v-model="searchForm.type" placeholder="全部" clearable style="width: 150px">
           <el-option label="登录" value="登录" />
           <el-option label="操作" value="操作" />
         </el-select>

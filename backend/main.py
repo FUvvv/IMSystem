@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from passlib.context import CryptContext  # 新增导入
 import models, schemas
 from database import engine, get_db
 
@@ -11,6 +12,16 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
+
+# 配置 Bcrypt 哈希上下文
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# 辅助函数：生成密码哈希
+def get_password_hash(password: str):
+    return pwd_context.hash(password)
+# 辅助函数：校验密码
+def verify_password(plain_password: str, hashed_password: str):
+    return pwd_context.verify(plain_password, hashed_password)
+
 
 # ================= 权限与日志核心 =================
 def get_current_user(x_username: str = Header(default=None), db: Session = Depends(get_db)):
@@ -28,25 +39,31 @@ def record_log(db: Session, user: str, action: str, log_type: str = "操作"):
 
 # ================= 业务接口 =================
 
+# 1. 登录接口 (校验哈希)
 @app.post("/api/login")
 def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    if not db_user or db_user.password != user.password:
+    
+    # 使用 verify_password 校验明文密码与数据库中的哈希值
+    if not db_user or not verify_password(user.password, db_user.password):
         raise HTTPException(status_code=400, detail="用户名或密码错误")
+        
     if not db_user.status:
         raise HTTPException(status_code=403, detail="该账号已被禁用")
     
     record_log(db, user.username, "用户登录系统", "登录")
     return {"msg": "登录成功", "token": f"mock_token_{db_user.id}", "username": db_user.username, "role": db_user.role}
 
-# --- 用户注册 ---
+# 2. 注册接口 (加密存储)
 @app.post("/api/register")
 def register(user: schemas.UserRegister, db: Session = Depends(get_db)):
     exist_user = db.query(models.User).filter(models.User.username == user.username).first()
     if exist_user:
         raise HTTPException(status_code=400, detail="用户名已存在")
-    # 默认注册为普通用户，状态正常
-    db_user = models.User(username=user.username, password=user.password, role="user", status=True)
+        
+    # 存储哈希后的密码
+    hashed_pwd = get_password_hash(user.password)
+    db_user = models.User(username=user.username, password=hashed_pwd, role="user", status=True)
     db.add(db_user)
     db.commit()
     return {"msg": "注册成功"}
@@ -118,9 +135,12 @@ def update_inventory(inv_id: int, inv_update: schemas.InventoryUpdate, current_u
 def get_users(db: Session = Depends(get_db)):
     return db.query(models.User).all()
 
+# 新增用户 (加密存储)
 @app.post("/api/users", response_model=schemas.UserResponse)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    db_user = models.User(**user.model_dump())
+    hashed_pwd = get_password_hash(user.password)
+    # 替换明文密码为哈希值
+    db_user = models.User(username=user.username, password=hashed_pwd, role=user.role, status=True)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -145,7 +165,9 @@ def reset_password(req: schemas.UserResetPassword, current_user: models.User = D
     db_user = db.query(models.User).filter(models.User.id == req.user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="用户不存在")
-    db_user.password = "123456"
+        
+    # 将重置的默认密码 123456 进行哈希加密后存入数据库
+    db_user.password = get_password_hash("123456")
     record_log(db, current_user.username, f"重置用户[{db_user.username}]密码为默认密码")
     db.commit()
     return {"msg": "密码已重置为123456"}

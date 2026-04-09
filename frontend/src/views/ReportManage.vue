@@ -93,7 +93,8 @@
 import { ref, reactive, onMounted, nextTick, watch, computed } from 'vue'
 import axios from 'axios'
 import * as echarts from 'echarts'
-import * as XLSX from 'xlsx'
+// 注意：如果需要导出样式生效，请确保安装并引入了 xlsx-js-style，而不是普通的 xlsx
+import * as XLSX from 'xlsx-js-style' 
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { ElMessage } from 'element-plus'
@@ -102,10 +103,9 @@ const activeTab = ref('inventory')
 const summary = ref({ product_count: 0, low_stock_count: 0 })
 const productStats = ref([])
 const inventoryStats = ref([])
-const rawProducts = ref([]) // 用于导出商品明细
+const rawProducts = ref([]) 
 const inventoryChartRef = ref(null)
 
-// 导出相关状态
 const exportDialogVisible = ref(false)
 const exportConfig = reactive({
   templateType: 'inventory',
@@ -113,7 +113,6 @@ const exportConfig = reactive({
   selectedFields: ['name', 'stock', 'min_alert', 'status']
 })
 
-// 模板字段定义 (新增英文标签)
 const templateFields = {
   product: [
     { key: 'id', label: '商品ID', enLabel: 'Product ID' },
@@ -135,7 +134,6 @@ const templateFields = {
 const currentAvailableFields = computed(() => templateFields[exportConfig.templateType])
 
 const handleTemplateChange = (val) => {
-  // 切换模板时，默认全选该模板下的所有字段
   exportConfig.selectedFields = templateFields[val].map(f => f.key)
 }
 
@@ -146,7 +144,6 @@ const fetchDashboardData = async () => {
     productStats.value = res.data.product_stats
     inventoryStats.value = res.data.inventory_stats
     
-    // 获取原始商品列表供导出用
     const prodRes = await axios.get('http://localhost:8000/api/products')
     rawProducts.value = prodRes.data
     
@@ -175,7 +172,6 @@ watch(activeTab, async () => {
   renderCharts()
 })
 
-// 执行自定义导出
 const executeCustomExport = () => {
   if (exportConfig.selectedFields.length === 0) {
     return ElMessage.warning('请至少选择一个导出字段')
@@ -204,11 +200,9 @@ const executeCustomExport = () => {
 
   if (sourceData.length === 0) return ElMessage.warning('暂无数据可导出')
 
-  // === PDF 纯英文导出 ===
   if (exportConfig.format === 'pdf') {
     const doc = new jsPDF()
     
-    // Header
     doc.setFontSize(16)
     doc.text("XX Group Co., Ltd.", 14, 15)
     doc.setFontSize(14)
@@ -220,7 +214,6 @@ const executeCustomExport = () => {
     doc.text(`Export Dept: Data Center`, 100, 42)
     doc.text(`Exported By: Admin`, 150, 42)
 
-    // Table Data
     const head = [exportConfig.selectedFields.map(key => {
       return currentAvailableFields.value.find(f => f.key === key).enLabel
     })]
@@ -228,7 +221,6 @@ const executeCustomExport = () => {
     const body = sourceData.map(item => {
       return exportConfig.selectedFields.map(key => {
         let val = item[key]
-        // 状态转纯英文
         if (key === 'status') {
           val = val === '库存预警' ? 'Low Stock' : 'Normal'
         }
@@ -244,7 +236,6 @@ const executeCustomExport = () => {
       headStyles: { fillColor: [64, 158, 255] }
     })
 
-    // Footer
     const finalY = doc.lastAutoTable.finalY || 50
     doc.text("Prepared by: ______________   Reviewed by: ______________   Approved by: ______________", 14, finalY + 20)
 
@@ -254,39 +245,112 @@ const executeCustomExport = () => {
     return
   }
 
-  // === Excel 导出 (保持原有中文) ===
-  const exportData = sourceData.map(item => {
-    const row = {}
-    exportConfig.selectedFields.forEach(key => {
-      const fieldDef = currentAvailableFields.value.find(f => f.key === key)
-      if (fieldDef) row[fieldDef.label] = item[key]
-    })
-    return row
+  // === Excel 导出 (样式控制) ===
+  const colCount = exportConfig.selectedFields.length 
+  const maxColIndex = Math.max(colCount - 1, 3);
+  
+  // 1. 构造 AoA (Array of Arrays) 数据结构
+  const excelData = []
+  excelData.push(["XX集团有限公司"]) // Row 1
+  excelData.push([reportTitle])      // Row 2
+  excelData.push([`报表编号: REP-${new Date().getTime()}`]) // Row 3
+  
+  // Header Row 4
+  const headers = exportConfig.selectedFields.map(key => {
+    return currentAvailableFields.value.find(f => f.key === key).label
+  })
+  excelData.push(headers)
+  
+  // Data Rows 5+
+  sourceData.forEach(item => {
+    const row = exportConfig.selectedFields.map(key => item[key])
+    excelData.push(row)
   })
 
-  const ws = XLSX.utils.json_to_sheet([])
-  const colCount = exportConfig.selectedFields.length 
+  // Footer Rows
+  excelData.push([`生成时间: ${new Date().toLocaleString()}`])
+  excelData.push([`导出部门: 数据中心`])
+  excelData.push([`导出人: Admin`])
+  excelData.push([`制表人：______________   审核人：______________   批准人：______________`])
 
-  XLSX.utils.sheet_add_aoa(ws, [["XX集团有限公司"]], { origin: "A1" })
-  XLSX.utils.sheet_add_aoa(ws, [[reportTitle]], { origin: "A2" })
-  XLSX.utils.sheet_add_aoa(ws, [[`报表编号: REP-${new Date().getTime()}`]], { origin: "A3" })
-  XLSX.utils.sheet_add_aoa(ws, [[`生成时间: ${new Date().toLocaleString()}`, '', `导出部门: 数据中心`, `导出人: Admin`]], { origin: "A4" })
-  
-  XLSX.utils.sheet_add_json(ws, exportData, { origin: "A6" })
+  const ws = XLSX.utils.aoa_to_sheet(excelData)
 
-  const footerRow = 6 + exportData.length + 2
-  XLSX.utils.sheet_add_aoa(ws, [["制表人：______________   审核人：______________   批准人：______________"]], { origin: `A${footerRow}` })
+  // 2. 边框通用样式设置
+  const borderStyle = {
+    top: { style: 'thin', color: { rgb: "000000" } },
+    bottom: { style: 'thin', color: { rgb: "000000" } },
+    left: { style: 'thin', color: { rgb: "000000" } },
+    right: { style: 'thin', color: { rgb: "000000" } }
+  }
 
-  const wscols = Array(Math.max(colCount, 4)).fill({ wch: 22 })
-  ws['!cols'] = wscols
+  // 3. 遍历所有单元格应用样式
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let R = range.s.r; R <= range.e.r; ++R) {
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      const cellAddress = {c: C, r: R};
+      const cellRef = XLSX.utils.encode_cell(cellAddress);
+      
+      // 如果单元格为空，为了显示合并和边框，需要初始化它
+      if (!ws[cellRef]) ws[cellRef] = { t: 's', v: '' };
 
-  const maxColIndex = Math.max(colCount - 1, 3);
+      const cell = ws[cellRef];
+      
+      // 基础样式：仿宋，14号，左对齐，黑色边框
+      let cellStyle = {
+        font: { name: '仿宋', sz: 14, bold: false },
+        alignment: { horizontal: 'left', vertical: 'center' },
+        border: borderStyle
+      };
+
+      if (R === 0) {
+        // 第一行：公司名，仿宋24加粗，居中
+        cellStyle.font = { name: '仿宋', sz: 24, bold: true };
+        cellStyle.alignment = { horizontal: 'center', vertical: 'center' };
+      } else if (R === 1) {
+        // 第二行：表单名，仿宋18加粗，居中
+        cellStyle.font = { name: '仿宋', sz: 18, bold: true };
+        cellStyle.alignment = { horizontal: 'center', vertical: 'center' };
+      } else if (R === 2) {
+        // 第三行：报表编号，仿宋14加粗，左对齐
+        cellStyle.font = { name: '仿宋', sz: 14, bold: true };
+      } else if (R === 3) {
+        // 第四行：商品属性，仿宋14加粗，左对齐
+        cellStyle.font = { name: '仿宋', sz: 14, bold: true };
+      }
+
+      cell.s = cellStyle;
+    }
+  }
+
+  // 4. 设置行高 (!rows)
+  const rowsHeight = [
+    { hpt: 32 }, // 第一行 32磅
+    { hpt: 22 }, // 第二行 22磅
+    { hpt: 20 }, // 第三行 20磅
+  ];
+  // 从第四行到最后一行，均为 20磅
+  for (let i = 3; i <= range.e.r; i++) {
+    rowsHeight.push({ hpt: 20 });
+  }
+  ws['!rows'] = rowsHeight;
+
+  // 5. 设置列宽 (!cols)
+  ws['!cols'] = Array(Math.max(colCount, 4)).fill({ wch: 22 });
+
+  // 6. 设置合并单元格 (!merges)
+  const dataRowCount = sourceData.length;
+  const footerStartRow = 4 + dataRowCount; // Header是第3行(索引)，数据占 dataRowCount 行
+
   ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: maxColIndex } }, 
-    { s: { r: 1, c: 0 }, e: { r: 1, c: maxColIndex } }, 
-    { s: { r: 2, c: 0 }, e: { r: 2, c: maxColIndex } }, 
-    { s: { r: footerRow - 1, c: 0 }, e: { r: footerRow - 1, c: maxColIndex } } 
-  ]
+    { s: { r: 0, c: 0 }, e: { r: 0, c: maxColIndex } }, // 第一行合并
+    { s: { r: 1, c: 0 }, e: { r: 1, c: maxColIndex } }, // 第二行合并
+    { s: { r: 2, c: 0 }, e: { r: 2, c: maxColIndex } }, // 第三行合并
+    // Footer 四行合并
+    { s: { r: footerStartRow, c: 0 }, e: { r: footerStartRow, c: maxColIndex } },
+    { s: { r: footerStartRow + 1, c: 0 }, e: { r: footerStartRow + 1, c: maxColIndex } },
+    { s: { r: footerStartRow + 2, c: 0 }, e: { r: footerStartRow + 2, c: maxColIndex } },
+    { s: { r: footerStartRow + 3, c: 0 }, e: { r: footerStartRow + 3, c: maxColIndex } }
+  ];
 
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, '报表数据')

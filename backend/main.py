@@ -5,6 +5,8 @@ from sqlalchemy import func
 from passlib.context import CryptContext  # 新增导入
 import models, schemas
 from database import engine, get_db
+from sqlalchemy import or_
+
 
 models.Base.metadata.create_all(bind=engine)
 app = FastAPI()
@@ -68,11 +70,14 @@ def register(user: schemas.UserRegister, db: Session = Depends(get_db)):
     db.commit()
     return {"msg": "注册成功"}
 
-# --- 商品接口 ---
+# --- 商品接口 (支持模糊查询) ---
 @app.get("/api/products", response_model=list[schemas.ProductResponse])
-def get_products(db: Session = Depends(get_db)):
-    return db.query(models.Product).all()
-
+def get_products(search: str = None, db: Session = Depends(get_db)):
+    query = db.query(models.Product)
+    if search:
+        # 模糊匹配名称或分类
+        query = query.filter((models.Product.name.contains(search)) | (models.Product.category.contains(search)))
+    return query.all()
 @app.post("/api/products", response_model=schemas.ProductResponse)
 def create_product(product: schemas.ProductCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     db_product = models.Product(**product.model_dump())

@@ -16,6 +16,9 @@ class Product(Base):
     name = Column(String(100))
     category = Column(String(50))
     price = Column(Numeric(10, 2))
+    specifications = Column(String(100))
+    produce_date = Column(DateTime) # 使用 DateTime 或 Date
+    batch_number = Column(String(50))
 
 class Inventory(Base):
     __tablename__ = "inventory"

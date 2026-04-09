@@ -119,7 +119,10 @@ const templateFields = {
     { key: 'id', label: '商品ID', enLabel: 'Product ID' },
     { key: 'name', label: '商品名称', enLabel: 'Product Name' },
     { key: 'category', label: '商品分类', enLabel: 'Category' },
-    { key: 'price', label: '单价(元)', enLabel: 'Price (CNY)' }
+    { key: 'specifications', label: '规格', enLabel: 'Specifications' },
+    { key: 'price', label: '单价(元)', enLabel: 'Price (CNY)' },
+    { key: 'production_date', label: '生产日期', enLabel: 'Production Date' },
+    { key: 'batch_number', label: '批号', enLabel: 'Batch Number' }
   ],
   inventory: [
     { key: 'name', label: '商品名称', enLabel: 'Product Name' },
@@ -186,7 +189,9 @@ const executeCustomExport = () => {
     reportTitle = '商品明细数据报表'
     reportTitleEn = 'Product Detail Data Report'
     sourceData = rawProducts.value.map(p => ({
-      id: p.id, name: p.name, category: p.category, price: p.price
+      id: p.id, name: p.name, category: p.category, 
+      specifications: p.specifications, price: p.price, 
+      production_date: p.production_date, batch_number: p.batch_number
     }))
   } else {
     reportTitle = '库存状态监控报表'

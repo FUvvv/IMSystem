@@ -22,20 +22,21 @@
           <el-switch v-model="scope.row.status" active-text="正常" inactive-text="禁用" @change="handleStatusChange(scope.row)" />
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="150">
+      <el-table-column label="操作" width="250">
         <template #default="scope">
-          <el-button size="small" @click="openDialog('edit', scope.row)">编辑</el-button>
+          <el-button size="small" @click="openDialog('edit', scope.row)">编辑角色</el-button>
+          <el-button size="small" type="warning" @click="resetPassword(scope.row.id)">重置密码</el-button>
         </template>
       </el-table-column>
     </el-table>
 
     <el-dialog :title="dialogType === 'add' ? '新增用户' : '编辑用户'" v-model="dialogVisible" width="400px">
-      <el-form :model="form" label-width="80px">
+            <el-form :model="form" label-width="80px">
         <el-form-item label="用户名">
           <el-input v-model="form.username" :disabled="dialogType === 'edit'"></el-input>
         </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" :placeholder="dialogType === 'edit' ? '不修改请留空' : '请输入密码'"></el-input>
+        <el-form-item label="密码" v-if="dialogType === 'add'">
+          <el-input v-model="form.password" type="password" placeholder="请输入初始密码"></el-input>
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="form.role" style="width: 100%;">
@@ -110,6 +111,15 @@ const handleStatusChange = async (row) => {
   } catch (e) {
     row.status = !row.status // 失败回滚开关状态
     ElMessage.error('状态更新失败')
+  }
+}
+
+const resetPassword = async (userId) => {
+  try {
+    await axios.post(`${apiBase}/users/reset_password`, { user_id: userId })
+    ElMessage.success('密码已重置为 123456')
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '重置失败')
   }
 }
 

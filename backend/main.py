@@ -39,6 +39,18 @@ def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
     record_log(db, user.username, "用户登录系统", "登录")
     return {"msg": "登录成功", "token": f"mock_token_{db_user.id}", "username": db_user.username, "role": db_user.role}
 
+# --- 用户注册 ---
+@app.post("/api/register")
+def register(user: schemas.UserRegister, db: Session = Depends(get_db)):
+    exist_user = db.query(models.User).filter(models.User.username == user.username).first()
+    if exist_user:
+        raise HTTPException(status_code=400, detail="用户名已存在")
+    # 默认注册为普通用户，状态正常
+    db_user = models.User(username=user.username, password=user.password, role="user", status=True)
+    db.add(db_user)
+    db.commit()
+    return {"msg": "注册成功"}
+
 # --- 商品接口 ---
 @app.get("/api/products", response_model=list[schemas.ProductResponse])
 def get_products(db: Session = Depends(get_db)):
@@ -75,6 +87,14 @@ def delete_product(product_id: int, current_user: models.User = Depends(get_curr
         db.delete(db_product)
         db.commit()
     return {"msg": "删除成功"}
+
+@app.get("/api/products", response_model=list[schemas.ProductResponse])
+def get_products(search: str = None, db: Session = Depends(get_db)):
+    query = db.query(models.Product)
+    if search:
+        # 模糊匹配名称或分类
+        query = query.filter((models.Product.name.contains(search)) | (models.Product.category.contains(search)))
+    return query.all()
 
 # --- 库存接口 ---
 @app.get("/api/inventory")
@@ -116,6 +136,19 @@ def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(ge
     db.commit()
     db.refresh(db_user)
     return db_user
+
+# --- 管理员重置密码 ---
+@app.post("/api/users/reset_password")
+def reset_password(req: schemas.UserResetPassword, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="仅管理员可重置密码")
+    db_user = db.query(models.User).filter(models.User.id == req.user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    db_user.password = "123456"
+    record_log(db, current_user.username, f"重置用户[{db_user.username}]密码为默认密码")
+    db.commit()
+    return {"msg": "密码已重置为123456"}
 
 @app.get("/api/logs")
 def get_logs(user: str = None, type: str = None, db: Session = Depends(get_db)):

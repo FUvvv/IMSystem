@@ -66,6 +66,6 @@ CREATE TABLE `logs` (
 INSERT INTO `users` (`username`, `password`, `role`) VALUES ('admin', '123456', 'admin');
 -- 修改商品表，增加新属性
 ALTER TABLE `products` 
-ADD COLUMN `specification` varchar(100) DEFAULT NULL COMMENT '商品规格',
+ADD COLUMN `specifications` varchar(100) DEFAULT NULL COMMENT '商品规格',
 ADD COLUMN `produce_date` date DEFAULT NULL COMMENT '生产日期',
 ADD COLUMN `batch_number` varchar(50) DEFAULT NULL COMMENT '批号';

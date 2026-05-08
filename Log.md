@@ -116,3 +116,10 @@
 第六次修改：
     1、将密码存储改为哈希存储
 
+第七次修改：
+    1、模糊查询完善，第五次修改时未实现
+    2、添加npm install xlsx-js-style，实现自定义xlsx导出功能，现导出表格更加舒适
+
+第八次修改：
+    1、修改 frontend/src/views/InventoryManage.vue，完善出库逻辑，避免负数库存；
+    2、同时更新后端 backend/main.py 中的库存接口，增加库存不足的校验，双重保险。

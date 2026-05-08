@@ -127,13 +127,23 @@ def get_inventory(db: Session = Depends(get_db)):
 @app.put("/api/inventory/{inv_id}")
 def update_inventory(inv_id: int, inv_update: schemas.InventoryUpdate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     db_inv = db.query(models.Inventory).filter(models.Inventory.id == inv_id).first()
+    if not db_inv:
+        raise HTTPException(status_code=404, detail="库存记录不存在")
+    
     db_product = db.query(models.Product).filter(models.Product.id == db_inv.product_id).first()
+    
+    # 后端也进行库存不足校验（双重保险）
+    if inv_update.quantity_change < 0 and db_inv.quantity + inv_update.quantity_change < 0:
+        raise HTTPException(status_code=400, detail=f"库存不足！当前库存为 {db_inv.quantity}，请求出库数量为 {abs(inv_update.quantity_change)}")
+    
     db_inv.quantity += inv_update.quantity_change
     action_name = "入库" if inv_update.quantity_change > 0 else "出库"
-    # 使用真实登录的用户名记录日志
+    
+    # 记录日志
     record_log(db, current_user.username, f"商品[{db_product.name}] {action_name} {abs(inv_update.quantity_change)} 件")
     db.commit()
-    return {"msg": "更新成功"}
+    
+    return {"msg": "更新成功", "current_quantity": db_inv.quantity}
 
 # --- 用户与日志接口 ---
 @app.get("/api/users", response_model=list[schemas.UserResponse])

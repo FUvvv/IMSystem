@@ -38,21 +38,49 @@ const fetchInventory = async () => {
 
 const handleStock = (row, type) => {
   const actionName = type === 'in' ? '入库' : '出库'
+  
+  // 如果是出库操作，先检查当前库存
+  if (type === 'out') {
+    if (row.quantity <= 0) {
+      ElMessage.warning(`【${row.product_name}】当前库存为0，无法进行出库操作`)
+      return
+    }
+  }
+  
   ElMessageBox.prompt(`请输入【${row.product_name}】的${actionName}数量:`, actionName, {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     inputPattern: /^[1-9]\d*$/,
     inputErrorMessage: '请输入正整数'
   }).then(async ({ value }) => {
-    const change = type === 'in' ? parseInt(value) : -parseInt(value)
+    const change = parseInt(value)
+    
+    // 如果是出库操作，判断库存是否充足
+    if (type === 'out') {
+      if (change > row.quantity) {
+        ElMessage.error(`库存不足！当前库存为 ${row.quantity}，出库数量为 ${change}，无法完成出库操作`)
+        return // 直接返回，不执行出库
+      }
+    }
+    
+    // 计算最终的库存变动值
+    const quantityChange = type === 'in' ? change : -change
+    
     try {
-      await axios.put(`http://localhost:8000/api/inventory/${row.id}`, { quantity_change: change })
-      ElMessage.success(`${actionName}成功`)
+      await axios.put(`http://localhost:8000/api/inventory/${row.id}`, { quantity_change: quantityChange })
+      ElMessage.success(`${actionName}成功！${type === 'out' ? `出库 ${change} 件` : `入库 ${change} 件`}`)
       fetchInventory()
     } catch (e) {
-      ElMessage.error(e.response?.data?.detail || `${actionName}失败`)
+      // 处理后端返回的错误（如数据库层面的库存不足校验）
+      if (e.response?.data?.detail) {
+        ElMessage.error(e.response.data.detail)
+      } else {
+        ElMessage.error(`${actionName}失败`)
+      }
     }
-  }).catch(() => {})
+  }).catch(() => {
+    // 用户取消操作
+  })
 }
 
 onMounted(() => fetchInventory())
